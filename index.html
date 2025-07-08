@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SSO User Info</title>
+    <script src="https://alcdn.msauth.net/browser/2.30.0/js/msal-browser.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #333; }
+        .info { margin-top: 20px; font-size: 18px; }
+    </style>
+</head>
+<body>
+    <h1>User Information</h1>
+    <div class="info">
+        <p><strong>Name:</strong> <span id="userName">Loading...</span></p>
+        <p><strong>Email:</strong> <span id="userEmail">Loading...</span></p>
+    </div>
+    <script>
+        const msalConfig = {
+            auth: {
+                clientId: "YOUR_CLIENT_ID",
+                authority: "https://login.microsoftonline.com/YOUR_TENANT_ID",
+                redirectUri: "https://your-username.github.io"
+            }
+        };
+        const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+        // Check for existing login
+        msalInstance.handleRedirectPromise().then((response) => {
+            if (response) {
+                // User already logged in
+                fetchUserInfo(response.accessToken);
+            } else {
+                // Attempt silent login
+                msalInstance.acquireTokenSilent({ scopes: ["User.Read"] })
+                    .then((response) => {
+                        fetchUserInfo(response.accessToken);
+                    })
+                    .catch((error) => {
+                        console.error("Silent login failed:", error);
+                        // Fallback to popup login
+                        msalInstance.loginPopup({ scopes: ["User.Read"] })
+                            .then((response) => {
+                                fetchUserInfo(response.accessToken);
+                            })
+                            .catch((error) => {
+                                console.error("Popup login failed:", error);
+                                document.getElementById("userName").textContent = "Error";
+                                document.getElementById("userEmail").textContent = "Error";
+                            });
+                    });
+            }
+        }).catch((error) => {
+            console.error("Redirect handling failed:", error);
+        });
+
+        function fetchUserInfo(accessToken) {
+            fetch("https://graph.microsoft.com/v1.0/me", {
+                headers: { "Authorization": `Bearer ${accessToken}` }
+            })
+            .then(res => res.json())
+            .then(userInfo => {
+                document.getElementById("userName").textContent = userInfo.displayName || "Unknown";
+                document.getElementById("userEmail").textContent = userInfo.mail || "Unknown";
+            })
+            .catch(error => {
+                console.error("Error fetching user info:", error);
+                document.getElementById("userName").textContent = "Error";
+                document.getElementById("userEmail").textContent = "Error";
+            });
+        }
+    </script>
+</body>
+</html>
