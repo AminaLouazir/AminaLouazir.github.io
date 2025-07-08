@@ -2,15 +2,17 @@
 <html>
 <head>
     <title>SSO User Info</title>
-    <script src="https://alcdn.msauth.net/browser/2.30.0/js/msal-browser.min.js"></script>
+    <script src="https://alcdn.msauth.net/browser/2.37.0/js/msal-browser.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         h1 { color: #333; }
         .info { margin-top: 20px; font-size: 18px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
     </style>
 </head>
 <body>
     <h1>User Information</h1>
+    <button onclick="login()">Sign In</button>
     <div class="info">
         <p><strong>Name:</strong> <span id="userName">Loading...</span></p>
         <p><strong>Email:</strong> <span id="userEmail">Loading...</span></p>
@@ -21,53 +23,65 @@
                 clientId: "9049e0cb-e84d-41ee-b153-7b635669987b",
                 authority: "https://login.microsoftonline.com/common",
                 redirectUri: "https://AminaLouazir.github.io"
+            },
+            cache: {
+                cacheLocation: "localStorage", // Persist login across sessions
+                storeAuthStateInCookie: true // Support older browsers
             }
         };
         const msalInstance = new msal.PublicClientApplication(msalConfig);
 
-        // Check for existing login
-        msalInstance.handleRedirectPromise().then((response) => {
-            if (response) {
-                // User already logged in
-                fetchUserInfo(response.accessToken);
+        // Initialize MSAL
+        msalInstance.initialize().then(() => {
+            // Check for existing accounts
+            const accounts = msalInstance.getAllAccounts();
+            if (accounts.length > 0) {
+                msalInstance.setActiveAccount(accounts[0]); // Set first account as active
+                login();
             } else {
-                // Attempt silent login
-                msalInstance.acquireTokenSilent({ scopes: ["User.Read"] })
-                    .then((response) => {
-                        fetchUserInfo(response.accessToken);
-                    })
-                    .catch((error) => {
-                        console.error("Silent login failed:", error);
-                        // Fallback to popup login
-                        msalInstance.loginPopup({ scopes: ["User.Read"] })
-                            .then((response) => {
-                                fetchUserInfo(response.accessToken);
-                            })
-                            .catch((error) => {
-                                console.error("Popup login failed:", error);
-                                document.getElementById("userName").textContent = "Error";
-                                document.getElementById("userEmail").textContent = "Error";
-                            });
-                    });
+                login(); // Trigger login if no accounts found
             }
-        }).catch((error) => {
-            console.error("Redirect handling failed:", error);
+        }).catch(error => {
+            console.error("MSAL initialization failed:", error);
+            document.getElementById("userName").textContent = "Error";
+            document.getElementById("userEmail").textContent = "Error";
         });
+
+        function login() {
+            const loginRequest = { scopes: ["User.Read"] };
+            msalInstance.acquireTokenSilent(loginRequest)
+                .then((response) => {
+                    fetchUserInfo(response.accessToken);
+                })
+                .catch((error) => {
+                    console.error("Silent login failed:", error);
+                    msalInstance.loginPopup(loginRequest)
+                        .then((response) => {
+                            msalInstance.setActiveAccount(response.account); // Set account after popup
+                            fetchUserInfo(response.accessToken);
+                        })
+                        .catch((error) => {
+                            console.error("Popup login failed:", error);
+                            document.getElementById("userName").textContent = "Error";
+                            document.getElementById("userEmail").textContent = "Error";
+                        });
+                });
+        }
 
         function fetchUserInfo(accessToken) {
             fetch("https://graph.microsoft.com/v1.0/me", {
                 headers: { "Authorization": `Bearer ${accessToken}` }
             })
-            .then(res => res.json())
-            .then(userInfo => {
-                document.getElementById("userName").textContent = userInfo.displayName || "Unknown";
-                document.getElementById("userEmail").textContent = userInfo.mail || "Unknown";
-            })
-            .catch(error => {
-                console.error("Error fetching user info:", error);
-                document.getElementById("userName").textContent = "Error";
-                document.getElementById("userEmail").textContent = "Error";
-            });
+                .then(res => res.json())
+                .then(userInfo => {
+                    document.getElementById("userName").textContent = userInfo.displayName || "Unknown";
+                    document.getElementById("userEmail").textContent = userInfo.mail || userInfo.userPrincipalName || "Unknown";
+                })
+                .catch(error => {
+                    console.error("Error fetching user info:", error);
+                    document.getElementById("userName").textContent = "Error";
+                    document.getElementById("userEmail").textContent = "Error";
+                });
         }
     </script>
 </body>
